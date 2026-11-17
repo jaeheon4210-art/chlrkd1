@@ -2,7 +2,7 @@
 # (팀 이름) — (핵심 질문 한 줄)
 
 ## 팀원
-- 20816 김재헌
+- 20816 김재헌 https://archive.ics.uci.edu/dataset/967/phiusiil+phishing+url+dataset 데이터 
 - 20817 배태현
 - 20824 최강 https://www.data.go.kr/data/15134424/fileData.do
 
