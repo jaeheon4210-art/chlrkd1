@@ -132,7 +132,7 @@ def get_builtin_sample():
     return pd.DataFrame(records)
 
 # ---------------------------------------------------------
-# 3. 사이드바 (파일 업로드 및 색상 테마 설정만 깔끔하게 배치)
+# 3. 사이드바 (파일 업로드 및 색상 테마 설정)
 # ---------------------------------------------------------
 with st.sidebar:
     st.header("🎨 화면 및 데이터 설정")
@@ -200,151 +200,73 @@ df["hyphen_count"] = df["url"].str.count("-")
 df["slash_count"] = df["url"].str.count("/")
 df["query_count"] = df["url"].str.count(r"\?")
 df["equal_count"] = df["url"].str.count("=")
+df["special_total"] = df["dot_count"] + df["hyphen_count"] + df["slash_count"] + df["query_count"] + df["equal_count"]
 df["is_https"] = df["url"].str.startswith("https://").map({True: "HTTPS 사용", False: "HTTP / 기타"})
 
 # ---------------------------------------------------------
-# 5. 상단 타이틀 및 핵심 KPI 요약 배너
+# 5. 상단 타이틀 및 핵심 요약
 # ---------------------------------------------------------
 st.title("🛡️ 범용 생성형 AI는 정말 악성 URL과 정상 URL을 구별할 수 있을까?")
 st.caption(f"분석 데이터: **{source_label}** | 3·4차시 데이터 전처리 및 탐색적 데이터 분석(EDA)")
 
-normal_avg_len = df[df["구분"] == "정상 URL"]["url_length"].mean()
-mal_avg_len = df[df["구분"] == "악성 URL"]["url_length"].mean()
+normal_df = df[df["구분"] == "정상 URL"]
+mal_df = df[df["구분"] == "악성 URL"]
+normal_avg_len = normal_df["url_length"].mean() if len(normal_df) > 0 else 0
+mal_avg_len = mal_df["url_length"].mean() if len(mal_df) > 0 else 0
 
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("정제 완료 데이터", f"{after_rows:,} 건", f"원본 대비 {(after_rows/before_rows*100):.1f}% 보존")
-k2.metric("정상 / 악성 비율", f"{(df['구분']=='정상 URL').sum():,} : {(df['구분']=='악성 URL').sum():,}")
-k3.metric("정상 URL 평균 길이", f"{normal_avg_len:.1f} 자" if pd.notna(normal_avg_len) else "-")
-k4.metric("악성 URL 평균 길이", f"{mal_avg_len:.1f} 자" if pd.notna(mal_avg_len) else "-", f"+{(mal_avg_len - normal_avg_len):.1f} 자" if pd.notna(mal_avg_len) and pd.notna(normal_avg_len) else None)
+k2.metric("정상 : 악성 건수", f"{len(normal_df):,} : {len(mal_df):,}")
+k3.metric("정상 URL 평균 길이", f"{normal_avg_len:.1f} 자")
+k4.metric("악성 URL 평균 길이", f"{mal_avg_len:.1f} 자", f"{(mal_avg_len - normal_avg_len):+.1f} 자")
 
 st.write("")
 
 # ---------------------------------------------------------
-# 6. 3단 탭 구성 (발표 시 화면 전환 용이)
+# 6. 3단 탭 구성
 # ---------------------------------------------------------
 tab1, tab2, tab3 = st.tabs([
-    "📈 탐색적 데이터 분석 (그래프)",
+    "📈 탐색적 데이터 분석 (그래프 선택)",
     "🧹 데이터 전처리 비교",
     "📋 원본 데이터 개요"
 ])
 
 color_scale = alt.Scale(domain=["정상 URL", "악성 URL"], range=[normal_color, mal_color])
 
-# [탭 1] 그래프 4종 + 근거 수치 표
+# [탭 1] 그래프 1개 + 선택지 + 근거 수치 자동 출력
 with tab1:
-    c_left, c_right = st.columns(2)
+    chart_option = st.radio(
+        "📌 보고 싶은 그래프를 선택하세요:",
+        [
+            "1. 정상 vs 악성 URL 구성 비율 (도넛 차트)",
+            "2. URL 전체 길이 분포 비교 (히스토그램)",
+            "3. 의심 특수문자 평균 빈도 비교 (가로 막대그래프)",
+            "4. HTTPS 보안 프로토콜 사용 비율 (누적 막대그래프)",
+            "5. URL 길이와 특수문자 개수의 관계 (산점도)"
+        ],
+        horizontal=True
+    )
 
-    # 그래프 1: 도넛 차트 (정상 vs 악성 비율)
-    with c_left:
+    st.divider()
+
+    if chart_option.startswith("1."):
         count_df = df["구분"].value_counts().reset_index()
         count_df.columns = ["URL 유형", "데이터 개수"]
         count_df["비율"] = (count_df["데이터 개수"] / count_df["데이터 개수"].sum() * 100).round(1)
 
-        donut = alt.Chart(count_df).mark_arc(innerRadius=65, outerRadius=120).encode(
-            theta=alt.Theta("데이터 개수:Q"),
-            color=alt.Color("URL 유형:N", scale=color_scale, legend=alt.Legend(title="URL 유형", orient="bottom")),
+        chart = alt.Chart(count_df).mark_arc(innerRadius=85, outerRadius=160).encode(
+            theta=alt.Theta("데이터 개수:Q", title="데이터 개수 (건)"),
+            color=alt.Color("URL 유형:N", scale=color_scale, legend=alt.Legend(title="URL 유형 (정상 vs 악성)")),
             tooltip=["URL 유형", alt.Tooltip("데이터 개수:Q", format=","), alt.Tooltip("비율:Q", format=".1f", title="비율(%)")]
-        ).properties(title="그래프 1. 정상 URL vs 악성 URL 구성 비율 (도넛 차트)", height=330)
-        st.altair_chart(donut, use_container_width=True)
+        ).properties(title="정상 URL vs 악성 URL 데이터 구성 비율", height=420)
+        st.altair_chart(chart, use_container_width=True)
 
-    # 그래프 2: 겹침 히스토그램 (URL 길이 분포)
-    with c_right:
+        n_pct = (len(normal_df) / len(df) * 100) if len(df) > 0 else 0
+        m_pct = (len(mal_df) / len(df) * 100) if len(df) > 0 else 0
+        st.info(f"💡 **근거 수치 요약**: 전처리 후 총 **{len(df):,}건** 중 정상 URL은 **{len(normal_df):,}건({n_pct:.1f}%)**, 악성 URL은 **{len(mal_df):,}건({m_pct:.1f}%)**입니다.")
+
+    elif chart_option.startswith("2."):
         plot_df = df.sample(n=10000, random_state=42) if len(df) > 10000 else df
-        hist = alt.Chart(plot_df).mark_bar(opacity=0.65).encode(
+        chart = alt.Chart(plot_df).mark_bar(opacity=0.65).encode(
             x=alt.X("url_length:Q", bin=alt.Bin(maxbins=25), title="URL 전체 길이 (글자 수)"),
-            y=alt.Y("count():Q", stack=None, title="URL 개수 (건)"),
-            color=alt.Color("구분:N", scale=color_scale, legend=alt.Legend(title="URL 유형", orient="bottom")),
-            tooltip=["구분", alt.Tooltip("count():Q", title="해당 구간 건수")]
-        ).properties(title="그래프 2. URL 유형별 길이(글자 수) 분포 비교 (히스토그램)", height=330)
-        st.altair_chart(hist, use_container_width=True)
-
-    c_left2, c_right2 = st.columns(2)
-
-    # 그래프 3: 가로 막대그래프 (특수문자 평균 등장 횟수)
-    with c_left2:
-        special_df = df.groupby("구분")[["dot_count", "hyphen_count", "slash_count", "query_count", "equal_count"]].mean().reset_index()
-        special_melted = special_df.melt(id_vars="구분", var_name="특수문자", value_name="평균 횟수")
-        special_melted["특수문자"] = special_melted["특수문자"].map({
-            "dot_count": "점 ( . )",
-            "hyphen_count": "하이픈 ( - )",
-            "slash_count": "슬래시 ( / )",
-            "query_count": "물음표 ( ? )",
-            "equal_count": "등호 ( = )"
-        })
-
-        hbar = alt.Chart(special_melted).mark_bar().encode(
-            y=alt.Y("특수문자:N", title="특수문자 종류", sort="-x"),
-            x=alt.X("평균 횟수:Q", title="URL당 평균 등장 횟수 (회)"),
-            color=alt.Color("구분:N", scale=color_scale, legend=alt.Legend(title="URL 유형", orient="bottom")),
-            yOffset="구분:N",
-            tooltip=["특수문자", "구분", alt.Tooltip("평균 횟수:Q", format=".2f")]
-        ).properties(title="그래프 3. 정상 vs 악성 URL 특수문자 평균 빈도 (가로 막대)", height=330)
-        st.altair_chart(hbar, use_container_width=True)
-
-    # 그래프 4: 100% 비율 누적 막대그래프 (HTTPS 사용 비율)
-    with c_right2:
-        proto_df = df.groupby(["구분", "is_https"]).size().reset_index(name="건수")
-        stacked = alt.Chart(proto_df).mark_bar(size=75).encode(
-            x=alt.X("구분:N", title="URL 유형 (정상 vs 악성)", axis=alt.Axis(labelAngle=0)),
-            y=alt.Y("건수:Q", stack="normalize", title="비율 (0% ~ 100%)", axis=alt.Axis(format="%")),
-            color=alt.Color(
-                "is_https:N",
-                scale=alt.Scale(domain=["HTTPS 사용", "HTTP / 기타"], range=["#2E7D32", "#FFB300"]),
-                legend=alt.Legend(title="프로토콜 구분", orient="bottom")
-            ),
-            tooltip=["구분", "is_https", alt.Tooltip("건수:Q", format=",")]
-        ).properties(title="그래프 4. 정상 vs 악성 URL의 HTTPS 보안 프로토콜 비율", height=330)
-        st.altair_chart(stacked, use_container_width=True)
-
-    st.subheader("📌 그래프로 찾아낸 근거 수치 요약")
-    df["https_pct"] = df["url"].str.startswith("https://").astype(int) * 100
-    summary_stats = df.groupby("구분").agg(
-        데이터_건수=("url", "count"),
-        평균_길이_자=("url_length", "mean"),
-        중앙값_길이_자=("url_length", "median"),
-        최대_길이_자=("url_length", "max"),
-        평균_점_개수=("dot_count", "mean"),
-        평균_슬래시_개수=("slash_count", "mean"),
-        HTTPS_비율_퍼센트=("https_pct", "mean")
-    ).round(2).reset_index()
-    st.dataframe(summary_stats, use_container_width=True, hide_index=True)
-
-# [탭 2] 전처리 기준 및 전후 비교
-with tab2:
-    st.subheader("결측치·이상치 처리 기준 (우리 팀의 뺄 값과 남길 값)")
-    col_rule1, col_rule2 = st.columns(2)
-    with col_rule1:
-        st.success("**✅ 남길 값 (Keep)**\n- 검사 대상 웹 주소 문자열(`URL`) 및 정답 라벨(`label`)\n- 파생 변수: URL 길이, 특수문자 개수, HTTPS 여부")
-    with col_rule2:
-        st.error("**🗑️ 뺄 값 (Drop & Clean)**\n- `URL` 또는 `label`이 비어 있는 결측치(`NaN`·공백)\n- 소문자 변환 후 중복되는 `URL`\n- 도메인 점(`.`)이 없거나 길이 5자 미만인 이상 문자열")
-
-    stage_df = pd.DataFrame({
-        "전처리 단계": ["1. 원본 데이터", "2. 결측치 제거 후", "3. 중복·이상치 제거 후 (최종)"],
-        "남은 행 수": [before_rows, after_na_rows, after_rows]
-    })
-    stage_chart = alt.Chart(stage_df).mark_bar(size=65, color=normal_color).encode(
-        x=alt.X("전처리 단계:N", sort=None, axis=alt.Axis(labelAngle=0), title="전처리 진행 단계"),
-        y=alt.Y("남은 행 수:Q", title="데이터 행 수 (건)"),
-        tooltip=["전처리 단계", alt.Tooltip("남은 행 수:Q", format=",")]
-    ).properties(title="전처리 단계별 데이터 행 수 변화", height=320)
-    stage_text = stage_chart.mark_text(dy=-8, fontWeight="bold").encode(text=alt.Text("남은 행 수:Q", format=","))
-    st.altair_chart(stage_chart + stage_text, use_container_width=True)
-
-# [탭 3] 원본 데이터 개요
-with tab3:
-    st.subheader("원본 데이터 구조 및 결측치 현황")
-    o1, o2, o3 = st.columns(3)
-    o1.metric("원본 행 수", f"{df_raw.shape[0]:,} 행")
-    o2.metric("원본 열 수", f"{df_raw.shape[1]:,} 열")
-    o3.metric("전체 빈 값(Null) 수", f"{int(df_raw.isna().sum().sum()):,} 개")
-
-    overview_df = pd.DataFrame({
-        "열 이름": df_raw.columns,
-        "자료형(dtype)": df_raw.dtypes.astype(str).values,
-        "빈 값(Null) 개수": df_raw.isna().sum().values,
-        "고유값(Unique) 개수": df_raw.nunique().values
-    })
-    st.dataframe(overview_df, use_container_width=True, hide_index=True)
-
-    st.subheader("전처리 완료 데이터 미리보기 (상위 10행)")
-    st.dataframe(df[["url", "구분", "url_length", "dot_count", "slash_count", "is_https"]].head(10), use_container_width=True, hide_index=True)
+            y=alt
