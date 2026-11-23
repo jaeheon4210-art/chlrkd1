@@ -233,16 +233,16 @@ tab1, tab2, tab3 = st.tabs([
 
 color_scale = alt.Scale(domain=["정상 URL", "악성 URL"], range=[normal_color, mal_color])
 
-# [탭 1] 그래프 1개 + 선택지 + 근거 수치 자동 출력
+# [탭 1] 그래프 1개 + 선택지 (색 겹침 제로 설계)
 with tab1:
     chart_option = st.radio(
         "📌 보고 싶은 그래프를 선택하세요:",
         [
             "1. 정상 vs 악성 URL 구성 비율 (도넛 차트)",
-            "2. URL 전체 길이 분포 비교 (히스토그램)",
+            "2. URL 길이 구간별 분포 비교 (나란히 막대그래프)",
             "3. 의심 특수문자 평균 빈도 비교 (가로 막대그래프)",
             "4. HTTPS 보안 프로토콜 사용 비율 (누적 막대그래프)",
-            "5. URL 길이와 특수문자 개수의 관계 (산점도)"
+            "5. URL 길이와 특수문자 개수의 관계 (좌우 분리 산점도)"
         ],
         horizontal=True
     )
@@ -266,18 +266,24 @@ with tab1:
         st.info(f"💡 **근거 수치 요약**: 전처리 후 총 **{len(df):,}건** 중 정상 URL은 **{len(normal_df):,}건({n_pct:.1f}%)**, 악성 URL은 **{len(mal_df):,}건({m_pct:.1f}%)**입니다.")
 
     elif chart_option.startswith("2."):
-        plot_df = df.sample(n=10000, random_state=42) if len(df) > 10000 else df
-        chart = alt.Chart(plot_df).mark_bar(opacity=0.65).encode(
-            x=alt.X("url_length:Q", bin=alt.Bin(maxbins=25), title="URL 전체 길이 (글자 수)"),
-            y=alt.Y("count():Q", stack=None, title="URL 개수 (건)"),
+        # 겹침 방지를 위해 길이 구간별 나란히 막대(xOffset)로 출력
+        bins = [0, 20, 40, 60, 80, 10000]
+        labels = ["20자 이하", "21~40자", "41~60자", "61~80자", "81자 이상"]
+        df["길이_구간"] = pd.cut(df["url_length"], bins=bins, labels=labels).astype(str)
+        len_dist = df[df["길이_구간"] != "nan"].groupby(["길이_구간", "구분"]).size().reset_index(name="건수")
+
+        chart = alt.Chart(len_dist).mark_bar().encode(
+            x=alt.X("길이_구간:N", sort=labels, title="URL 길이 구간", axis=alt.Axis(labelAngle=0)),
+            y=alt.Y("건수:Q", title="URL 개수 (건)"),
             color=alt.Color("구분:N", scale=color_scale, legend=alt.Legend(title="URL 유형 (정상 vs 악성)")),
-            tooltip=["구분", alt.Tooltip("count():Q", title="해당 구간 건수")]
-        ).properties(title="URL 유형별 전체 글자 수(길이) 분포 비교", height=420)
+            xOffset="구분:N",
+            tooltip=["길이_구간", "구분", alt.Tooltip("건수:Q", format=",")]
+        ).properties(title="URL 길이 구간별 정상 vs 악성 분포 (나란히 비교)", height=420)
         st.altair_chart(chart, use_container_width=True)
 
         n_med = normal_df["url_length"].median() if len(normal_df) > 0 else 0
         m_med = mal_df["url_length"].median() if len(mal_df) > 0 else 0
-        st.info(f"💡 **근거 수치 요약**: 정상 URL은 평균 **{normal_avg_len:.1f}자**(중앙값 {n_med:.0f}자)인 반면, 악성 URL은 평균 **{mal_avg_len:.1f}자**(중앙값 {m_med:.0f}자)로 악성 URL이 더 길게 분포합니다.")
+        st.info(f"💡 **근거 수치 요약**: 정상 URL은 평균 **{normal_avg_len:.1f}자**(중앙값 {n_med:.0f}자)인 반면, 악성 URL은 평균 **{mal_avg_len:.1f}자**(중앙값 {m_med:.0f}자)로 긴 구간에 집중되어 있습니다.")
 
     elif chart_option.startswith("3."):
         special_df = df.groupby("구분")[["dot_count", "hyphen_count", "slash_count", "query_count", "equal_count"]].mean().reset_index()
@@ -303,7 +309,7 @@ with tab1:
         m_hy = mal_df["hyphen_count"].mean() if len(mal_df) > 0 else 0
         n_sl = normal_df["slash_count"].mean() if len(normal_df) > 0 else 0
         m_sl = mal_df["slash_count"].mean() if len(mal_df) > 0 else 0
-        st.info(f"💡 **근거 수치 요약**: 하이픈(`-`) 평균 개수는 정상 **{n_hy:.2f}회** vs 악성 **{m_hy:.2f}회**, 슬래시(`/`)는 정상 **{n_sl:.2f}회** vs 악성 **{m_sl:.2f}회**로 악성 URL에서 특수문자 활용 빈도가 높게 나타났습니다.")
+        st.info(f"💡 **근거 수치 요약**: 하이픈(`-`) 평균 개수는 정상 **{n_hy:.2f}회** vs 악성 **{m_hy:.2f}회**, 슬래시(`/`)는 정상 **{n_sl:.2f}회** vs 악성 **{m_sl:.2f}회**로 악성 URL에서 특수문자 활용 빈도가 높습니다.")
 
     elif chart_option.startswith("4."):
         proto_df = df.groupby(["구분", "is_https"]).size().reset_index(name="건수")
@@ -324,13 +330,24 @@ with tab1:
         st.info(f"💡 **근거 수치 요약**: 정상 URL의 HTTPS 사용 비율은 **{n_https:.1f}%**, 악성 URL의 HTTPS 사용 비율은 **{m_https:.1f}%**입니다.")
 
     elif chart_option.startswith("5."):
-        scatter_df = df.sample(n=min(3000, len(df)), random_state=42)
-        chart = alt.Chart(scatter_df).mark_circle(size=60, opacity=0.65).encode(
-            x=alt.X("url_length:Q", title="URL 전체 길이 (글자 수)"),
-            y=alt.Y("special_total:Q", title="특수문자 총 개수 (개)"),
-            color=alt.Color("구분:N", scale=color_scale, legend=alt.Legend(title="URL 유형 (정상 vs 악성)")),
-            tooltip=["url", "구분", "url_length", "special_total"]
-        ).properties(title="URL 전체 길이와 특수문자 총 개수의 상관관계 (산점도)", height=420)
+        # 점 겹침 방지를 위해 정상/악성 좌우 패널 분리
+        scatter_df = df.sample(n=min(2000, len(df)), random_state=42)
+        max_x = int(scatter_df["url_length"].max()) + 5 if len(scatter_df) > 0 else 100
+        max_y = int(scatter_df["special_total"].max()) + 2 if len(scatter_df) > 0 else 20
+
+        left_sc = alt.Chart(scatter_df[scatter_df["구분"] == "정상 URL"]).mark_circle(size=60, opacity=0.85, color=normal_color).encode(
+            x=alt.X("url_length:Q", title="URL 길이 (글자 수)", scale=alt.Scale(domain=[0, max_x])),
+            y=alt.Y("special_total:Q", title="특수문자 총 개수 (개)", scale=alt.Scale(domain=[0, max_y])),
+            tooltip=["url", "url_length", "special_total"]
+        ).properties(title="정상 URL 분포", width=360, height=380)
+
+        right_sc = alt.Chart(scatter_df[scatter_df["구분"] == "악성 URL"]).mark_circle(size=60, opacity=0.85, color=mal_color).encode(
+            x=alt.X("url_length:Q", title="URL 길이 (글자 수)", scale=alt.Scale(domain=[0, max_x])),
+            y=alt.Y("special_total:Q", title="특수문자 총 개수 (개)", scale=alt.Scale(domain=[0, max_y])),
+            tooltip=["url", "url_length", "special_total"]
+        ).properties(title="악성 URL 분포", width=360, height=380)
+
+        chart = alt.hconcat(left_sc, right_sc).properties(title="URL 길이와 특수문자 개수의 관계 (유형별 좌우 분리)")
         st.altair_chart(chart, use_container_width=True)
 
         n_sp = normal_df["special_total"].mean() if len(normal_df) > 0 else 0
