@@ -269,4 +269,110 @@ with tab1:
         plot_df = df.sample(n=10000, random_state=42) if len(df) > 10000 else df
         chart = alt.Chart(plot_df).mark_bar(opacity=0.65).encode(
             x=alt.X("url_length:Q", bin=alt.Bin(maxbins=25), title="URL 전체 길이 (글자 수)"),
-            y=alt
+            y=alt.Y("count():Q", stack=None, title="URL 개수 (건)"),
+            color=alt.Color("구분:N", scale=color_scale, legend=alt.Legend(title="URL 유형 (정상 vs 악성)")),
+            tooltip=["구분", alt.Tooltip("count():Q", title="해당 구간 건수")]
+        ).properties(title="URL 유형별 전체 글자 수(길이) 분포 비교", height=420)
+        st.altair_chart(chart, use_container_width=True)
+
+        n_med = normal_df["url_length"].median() if len(normal_df) > 0 else 0
+        m_med = mal_df["url_length"].median() if len(mal_df) > 0 else 0
+        st.info(f"💡 **근거 수치 요약**: 정상 URL은 평균 **{normal_avg_len:.1f}자**(중앙값 {n_med:.0f}자)인 반면, 악성 URL은 평균 **{mal_avg_len:.1f}자**(중앙값 {m_med:.0f}자)로 악성 URL이 더 길게 분포합니다.")
+
+    elif chart_option.startswith("3."):
+        special_df = df.groupby("구분")[["dot_count", "hyphen_count", "slash_count", "query_count", "equal_count"]].mean().reset_index()
+        special_melted = special_df.melt(id_vars="구분", var_name="특수문자", value_name="평균 횟수")
+        special_melted["특수문자"] = special_melted["특수문자"].map({
+            "dot_count": "점 ( . )",
+            "hyphen_count": "하이픈 ( - )",
+            "slash_count": "슬래시 ( / )",
+            "query_count": "물음표 ( ? )",
+            "equal_count": "등호 ( = )"
+        })
+
+        chart = alt.Chart(special_melted).mark_bar().encode(
+            y=alt.Y("특수문자:N", title="특수문자 종류", sort="-x"),
+            x=alt.X("평균 횟수:Q", title="URL당 평균 등장 횟수 (회)"),
+            color=alt.Color("구분:N", scale=color_scale, legend=alt.Legend(title="URL 유형 (정상 vs 악성)")),
+            yOffset="구분:N",
+            tooltip=["특수문자", "구분", alt.Tooltip("평균 횟수:Q", format=".2f")]
+        ).properties(title="정상 vs 악성 URL의 주요 특수문자 평균 등장 횟수 비교", height=420)
+        st.altair_chart(chart, use_container_width=True)
+
+        n_hy = normal_df["hyphen_count"].mean() if len(normal_df) > 0 else 0
+        m_hy = mal_df["hyphen_count"].mean() if len(mal_df) > 0 else 0
+        n_sl = normal_df["slash_count"].mean() if len(normal_df) > 0 else 0
+        m_sl = mal_df["slash_count"].mean() if len(mal_df) > 0 else 0
+        st.info(f"💡 **근거 수치 요약**: 하이픈(`-`) 평균 개수는 정상 **{n_hy:.2f}회** vs 악성 **{m_hy:.2f}회**, 슬래시(`/`)는 정상 **{n_sl:.2f}회** vs 악성 **{m_sl:.2f}회**로 악성 URL에서 특수문자 활용 빈도가 높게 나타났습니다.")
+
+    elif chart_option.startswith("4."):
+        proto_df = df.groupby(["구분", "is_https"]).size().reset_index(name="건수")
+        chart = alt.Chart(proto_df).mark_bar(size=100).encode(
+            x=alt.X("구분:N", title="URL 유형 (정상 vs 악성)", axis=alt.Axis(labelAngle=0)),
+            y=alt.Y("건수:Q", stack="normalize", title="비율 (0% ~ 100%)", axis=alt.Axis(format="%")),
+            color=alt.Color(
+                "is_https:N",
+                scale=alt.Scale(domain=["HTTPS 사용", "HTTP / 기타"], range=["#2E7D32", "#FFB300"]),
+                legend=alt.Legend(title="보안 프로토콜 구분")
+            ),
+            tooltip=["구분", "is_https", alt.Tooltip("건수:Q", format=",")]
+        ).properties(title="정상 vs 악성 URL의 HTTPS 보안 프로토콜 사용 비율", height=420)
+        st.altair_chart(chart, use_container_width=True)
+
+        n_https = (normal_df["is_https"] == "HTTPS 사용").mean() * 100 if len(normal_df) > 0 else 0
+        m_https = (mal_df["is_https"] == "HTTPS 사용").mean() * 100 if len(mal_df) > 0 else 0
+        st.info(f"💡 **근거 수치 요약**: 정상 URL의 HTTPS 사용 비율은 **{n_https:.1f}%**, 악성 URL의 HTTPS 사용 비율은 **{m_https:.1f}%**입니다.")
+
+    elif chart_option.startswith("5."):
+        scatter_df = df.sample(n=min(3000, len(df)), random_state=42)
+        chart = alt.Chart(scatter_df).mark_circle(size=60, opacity=0.65).encode(
+            x=alt.X("url_length:Q", title="URL 전체 길이 (글자 수)"),
+            y=alt.Y("special_total:Q", title="특수문자 총 개수 (개)"),
+            color=alt.Color("구분:N", scale=color_scale, legend=alt.Legend(title="URL 유형 (정상 vs 악성)")),
+            tooltip=["url", "구분", "url_length", "special_total"]
+        ).properties(title="URL 전체 길이와 특수문자 총 개수의 상관관계 (산점도)", height=420)
+        st.altair_chart(chart, use_container_width=True)
+
+        n_sp = normal_df["special_total"].mean() if len(normal_df) > 0 else 0
+        m_sp = mal_df["special_total"].mean() if len(mal_df) > 0 else 0
+        st.info(f"💡 **근거 수치 요약**: URL 길이가 길어질수록 특수문자 총 개수도 비례해 증가하며, 평균 특수문자 총합은 정상 **{n_sp:.2f}개** vs 악성 **{m_sp:.2f}개**입니다.")
+
+# [탭 2] 전처리 기준 및 전후 비교
+with tab2:
+    st.subheader("결측치·이상치 처리 기준 (우리 팀의 뺄 값과 남길 값)")
+    col_rule1, col_rule2 = st.columns(2)
+    with col_rule1:
+        st.success("**✅ 남길 값 (Keep)**\n- 검사 대상 웹 주소 문자열(`URL`) 및 정답 라벨(`label`)\n- 파생 변수: URL 길이, 특수문자 개수, HTTPS 여부")
+    with col_rule2:
+        st.error("**🗑️ 뺄 값 (Drop & Clean)**\n- `URL` 또는 `label`이 비어 있는 결측치(`NaN`·공백)\n- 소문자 변환 후 중복되는 `URL`\n- 도메인 점(`.`)이 없거나 길이 5자 미만인 이상 문자열")
+
+    stage_df = pd.DataFrame({
+        "전처리 단계": ["1. 원본 데이터", "2. 결측치 제거 후", "3. 중복·이상치 제거 후 (최종)"],
+        "남은 행 수": [before_rows, after_na_rows, after_rows]
+    })
+    stage_chart = alt.Chart(stage_df).mark_bar(size=75, color=normal_color).encode(
+        x=alt.X("전처리 단계:N", sort=None, axis=alt.Axis(labelAngle=0), title="전처리 진행 단계"),
+        y=alt.Y("남은 행 수:Q", title="데이터 행 수 (건)"),
+        tooltip=["전처리 단계", alt.Tooltip("남은 행 수:Q", format=",")]
+    ).properties(title="전처리 단계별 데이터 행 수 변화", height=350)
+    stage_text = stage_chart.mark_text(dy=-8, fontWeight="bold").encode(text=alt.Text("남은 행 수:Q", format=","))
+    st.altair_chart(stage_chart + stage_text, use_container_width=True)
+
+# [탭 3] 원본 데이터 개요
+with tab3:
+    st.subheader("원본 데이터 구조 및 결측치 현황")
+    o1, o2, o3 = st.columns(3)
+    o1.metric("원본 행 수", f"{df_raw.shape[0]:,} 행")
+    o2.metric("원본 열 수", f"{df_raw.shape[1]:,} 열")
+    o3.metric("전체 빈 값(Null) 수", f"{int(df_raw.isna().sum().sum()):,} 개")
+
+    overview_df = pd.DataFrame({
+        "열 이름": df_raw.columns,
+        "자료형(dtype)": df_raw.dtypes.astype(str).values,
+        "빈 값(Null) 개수": df_raw.isna().sum().values,
+        "고유값(Unique) 개수": df_raw.nunique().values
+    })
+    st.dataframe(overview_df, use_container_width=True, hide_index=True)
+
+    st.subheader("전처리 완료 데이터 미리보기 (상위 10행)")
+    st.dataframe(df[["url", "구분", "url_length", "dot_count", "slash_count", "is_https"]].head(10), use_container_width=True, hide_index=True)
