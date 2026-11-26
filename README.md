@@ -2,8 +2,8 @@
 # (팀 이름) — (핵심 질문 한 줄)
 
 ## 팀원
-- 20816 김재헌 https://archive.ics.uci.edu/dataset/967/phiusiil+phishing+url+dataset 데이터 
-- 20817 배태현 https://chlrkd1-yfhktdra8cwn8ndnzvfj24.streamlit.app/
+- 20816 김재헌 
+- 20817 배태현
 - 20824 최강 https://www.data.go.kr/data/15134424/fileData.do
 
 ## 질문
@@ -68,4 +68,6 @@
 code/main.py 실행. 필요한 라이브러리는 requirements.txt.
 
 ## 배포(선택)
-스트림릿 주소:
+스트림릿 주소: https://chlrkd1-yfhktdra8cwn8ndnzvfj24.streamlit.app/
+스트림릿에 넣어야하는 데이터 https://archive.ics.uci.edu/dataset/967/phiusiil+phishing+url+dataset
+
